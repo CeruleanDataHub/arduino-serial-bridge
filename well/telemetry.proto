@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+service Well {
+    rpc SendTelemetry (WellTelemetryRequest) returns (WellTelemetryResponse) {}
+}
+
+message WellTelemetryRequest {
+    string hash = 1;
+    int32 epoch = 2;
+    int32 value = 3;
+    float voltage = 4;
+    float current = 5;
+}
+
+message WellTelemetryResponse {
+    string hash = 1;
+}
