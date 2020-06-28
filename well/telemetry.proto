@@ -6,7 +6,7 @@ service Well {
 
 message WellTelemetryRequest {
     string hash = 1;
-    int32 epoch = 2;
+    string timestamp = 2;
     int32 value = 3;
     float voltage = 4;
     float current = 5;

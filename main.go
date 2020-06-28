@@ -2,10 +2,11 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
+	"context"
+	"crypto/sha1"
+	"encoding/base64"
 	"errors"
 	"flag"
-	"net"
 	"os"
 	"os/signal"
 	"strconv"
@@ -13,37 +14,42 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ceruleandatahub/arduino-sink-bridge/well"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/tarm/serial"
+	"google.golang.org/grpc"
 )
 
 const (
-	defaultPort    = "/dev/ttyS4"
-	defaultBitrate = 115200
-	defaultTimeout = 5
+	defaultPort        = "/dev/ttyS4"
+	defaultBitrate     = 115200
+	defaultTimeout     = 5
+	defaultGRPCAddress = "0.0.0.0:50051"
 )
 
 var config struct {
-	port    string
-	bitrate int
-	socket  string
-	timeout int
+	port        string
+	bitrate     int
+	socket      string
+	timeout     int
+	grpcAddress string
 }
 
 // Telemetry Object 	for JSON Marshalling
 type Telemetry struct {
-	Hash    string  `json:"hash"`
-	Epoch   int     `json:"epoch"`
-	Value   int     `json:"value"`
-	Voltage float64 `json:"voltage"`
-	Current float64 `json:"current"`
+	Hash      string    `json:"hash"`
+	Timestamp time.Time `json:"timestamp"`
+	Value     int       `json:"value"`
+	Voltage   float64   `json:"voltage"`
+	Current   float64   `json:"current"`
 }
 
 func init() {
 	config.port = defaultPort
 	config.bitrate = defaultBitrate
 	config.timeout = defaultTimeout
+	config.grpcAddress = defaultGRPCAddress
 
 	if v := os.Getenv("SERIAL_PORT"); v != "" {
 		config.port = v
@@ -67,36 +73,44 @@ func init() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 }
 
-// ConstructTelemetry constructs Telemetry from unstructured string from serial connection
-func ConstructTelemetry(data string, str string) (telemetry Telemetry, err error) {
+// ConstructTelemetry constructs Telemetry from unstructured string from serial connection 133|0.65|0.43
+func ConstructTelemetry(data string, str string) (*well.WellTelemetryRequest, error) {
 	s := strings.Split(data, str)
 	if len(s) < 3 {
-		return Telemetry{}, errors.New("Minimum match not found")
+		return nil, errors.New("Minimum match not found")
 	}
 	value, err := strconv.Atoi(s[0])
 	if err != nil {
 		log.Error().Err(err)
-		return Telemetry{}, errors.New("Couldn't parse value")
+		return nil, errors.New("Couldn't parse value")
 	}
-	voltage, err := strconv.ParseFloat(s[1], 64)
+	voltage, err := strconv.ParseFloat(s[1], 32)
 	if err != nil {
 		log.Error().Err(err)
-		return Telemetry{}, errors.New("Couldn't parse voltage")
+		return nil, errors.New("Couldn't parse voltage")
 	}
-	current, err := strconv.ParseFloat(s[2], 64)
+	current, err := strconv.ParseFloat(s[2], 32)
 	if err != nil {
 		log.Error().Err(err)
-		return Telemetry{}, errors.New("Couldn't parse current")
+		return nil, errors.New("Couldn't parse current")
 	}
+	timestamp := time.Now().UTC()
+	timetext := timestamp.String()
+	mac := strings.Join([]string{timetext, data}, "|")
+	hasher := sha1.New()
+	toHash := []byte(mac)
+	hasher.Write(toHash)
+	hash := hasher.Sum(nil)
+	checksum := base64.URLEncoding.EncodeToString(hash)
 
-	t := Telemetry{
-		Hash:    "hash",
-		Epoch:   12345678,
-		Value:   value,
-		Voltage: voltage,
-		Current: current}
+	telemetry := &well.WellTelemetryRequest{
+		Hash:      checksum,
+		Timestamp: timetext,
+		Value:     int32(value),
+		Voltage:   float32(voltage),
+		Current:   float32(current)}
 
-	return t, nil
+	return telemetry, nil
 }
 
 func main() {
@@ -104,70 +118,48 @@ func main() {
 
 	log.Info().Msg("Starting Arduino Serial Bridge")
 
-	var socket net.Conn
-	var err error
-
-	if config.socket != "" {
-		log.Info().Str("PATH", config.socket).Msg("Establishing socket connection")
-
-		timer := time.NewTicker(time.Duration(config.timeout) * time.Second)
-		defer timer.Stop()
-
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
-
-		connected := make(chan bool, 1)
-
-	socketwait:
-		for {
-			select {
-			case <-connected:
-				timer.Stop()
-				ticker.Stop()
-				break socketwait
-			case <-timer.C:
-				log.Error().Msg("Socket connection timeout")
-			case <-ticker.C:
-				socket, err = net.Dial("unix", config.socket)
-				if err != nil {
-					continue
-				}
-
-				log.Info().Msg("Socket connected")
-				defer socket.Close()
-				connected <- true
-				continue
-			}
-		}
-		// socket, err = net.Dial("unix", config.socket)
-		// if err != nil {
-		// 	log.Fatal().Err(err).Str("SOCKET", config.socket).Msg("Unable to open unix socket")
-		// }
-		// defer socket.Close()
+	grpcConnection, err := grpc.Dial(config.grpcAddress, grpc.WithInsecure())
+	if err != nil {
+		log.Fatal().Err(err).Msg("Could not connect to gRPC server")
+		os.Exit(1)
 	}
+	defer grpcConnection.Close()
+	log.Info().Msg("Connected to gRPC Server")
+
+	grpcClient := well.NewWellClient(grpcConnection)
 
 	serialConfig := &serial.Config{Name: config.port, Baud: config.bitrate}
 
-	conn, err := serial.OpenPort(serialConfig)
+	serialConnection, err := serial.OpenPort(serialConfig)
 	if err != nil {
-		log.Info().Msg("Yes, fatal opening connection")
-		log.Fatal().Err(err)
+		log.Fatal().Err(err).Msg("Could not connect to Arduino Serial")
 		os.Exit(1)
 	}
-	defer conn.Close()
+	defer serialConnection.Close()
+	log.Info().Msg("Connected to Arduino Serial")
 
 	go func() {
-		scanner := bufio.NewScanner(conn)
+		scanner := bufio.NewScanner(serialConnection)
 		for scanner.Scan() {
-			t, err := ConstructTelemetry(scanner.Text(), "|")
+			data := scanner.Text()
+			telemetry, err := ConstructTelemetry(data, "|")
 			if err != nil {
-				log.Error().Err(err)
+				log.Error().Err(err).Msg("Could not construct telemetry message")
 				continue
 			}
-			log.Print(json.Marshal(t))
+			log.Info().Str("DATA", data).Msg("Received data from Arduino")
+
+			//ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			//defer cancel()
+			response, err := grpcClient.SendTelemetry(context.Background(), telemetry)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to send telemetry")
+				continue
+			}
+			log.Info().Str("HASH", response.Hash).Msg("Successfully sent telemetry message")
 		}
 		if err := scanner.Err(); err != nil {
-			log.Fatal().Err(err)
+			log.Error().Err(err).Msg("Failed to scan Arduino Serial")
 		}
 	}()
 
