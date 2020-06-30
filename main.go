@@ -51,7 +51,7 @@ func init() {
 	config.port = defaultPort
 	config.bitrate = defaultBitrate
 	config.timeout = defaultTimeout
-	config.retru = defaultRetry
+	config.retry = defaultRetry
 	config.grpcAddress = defaultGRPCAddress
 
 	if v := os.Getenv("SERIAL_PORT"); v != "" {
