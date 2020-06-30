@@ -47,20 +47,20 @@ func init() {
 	if v := os.Getenv("SERIAL_PORT"); v != "" {
 		config.port = v
 	}
-	if v := os.Getenv("SOCKET_PATH"); v != "" {
-		config.socket = v
-	}
 	if v, err := strconv.Atoi(os.Getenv("SERIAL_BITRATE")); err == nil {
 		config.bitrate = v
 	}
-	if v, err := strconv.Atoi(os.Getenv("SOCKET_TIMEOUT")); err == nil {
+	if v, err := strconv.Atoi(os.Getenv("SERIAL_TIMEOUT")); err == nil {
 		config.timeout = v
+	}
+	if v := os.Getenv("GRPC_ADDRESS"); v != "" {
+		config.grpcAddress = v
 	}
 
 	flag.StringVar(&config.port, "port", config.port, "Serial port where the Arduino is connected")
 	flag.IntVar(&config.bitrate, "bitrate", config.bitrate, "Serial bitrate used by the Arduino")
-	flag.StringVar(&config.socket, "socket", config.socket, "Path to unix socket where data is written (write to stdout if empty)")
-	flag.IntVar(&config.timeout, "timeout", config.timeout, "Timeout in seconds to wait for the socket to become available")
+	flag.IntVar(&config.timeout, "timeout", config.timeout, "Timeout in seconds to wait for the serial to become available")
+	flag.StringVar(&config.grpcAddress, "grpc-address", config.grpcAddress, "gRCP Address to connect")
 
 	// Comment this to get JSON logging, this is for pretty human-readable logging
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
