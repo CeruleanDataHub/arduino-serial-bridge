@@ -156,7 +156,12 @@ func main() {
 				log.Error().Err(err).Msg("Failed to send telemetry")
 				continue
 			}
-			log.Info().Str("HASH", response.Hash).Msg("Successfully sent telemetry message")
+			if response.Hash != telemetry.Hash {
+				log.Warn().Msg("Telemetry sent but hash mismatch")
+				continue
+			} else {
+				log.Debug().Str("HASH", response.Hash).Msg("Successfully sent telemetry message")
+			}
 		}
 		if err := scanner.Err(); err != nil {
 			log.Error().Err(err).Msg("Failed to scan Arduino Serial")
