@@ -6,6 +6,10 @@ FROM --platform=$TARGETPLATFORM golang:1.14.4-alpine AS builder
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
 
+RUN apk add --update --no-cache git build-base linux-headers
+
+WORKDIR /build
+
 COPY . .
 
 ENV GO111MODULE=on
