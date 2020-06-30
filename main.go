@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	defaultPort        = "/dev/ttyS4"
+	defaultPort        = "/dev/ttyS9"
 	defaultBitrate     = 115200
 	defaultTimeout     = 60
 	defaultRetry       = 5
@@ -32,19 +32,9 @@ const (
 var config struct {
 	port        string
 	bitrate     int
-	socket      string
 	timeout     int
 	retry       int
 	grpcAddress string
-}
-
-// Telemetry Object 	for JSON Marshalling
-type Telemetry struct {
-	Hash      string    `json:"hash"`
-	Timestamp time.Time `json:"timestamp"`
-	Value     int       `json:"value"`
-	Voltage   float64   `json:"voltage"`
-	Current   float64   `json:"current"`
 }
 
 func init() {
