@@ -111,11 +111,21 @@ func main() {
 
 	log.Info().Msg("Starting Arduino Serial Bridge")
 
+	var serialConnection *serial.Port
 	var err error
-	var grpcConnection *grpc.ClientConn
 
-	if config.grpcAddress != "" {
-		log.Info().Str("ADDRESS", config.grpcAddress).Msg("Establishing gRPC connection")
+	grpcConnection, err := grpc.Dial(config.grpcAddress, grpc.WithInsecure())
+	if err != nil {
+		log.Fatal().Err(err).Msg("Could not create gRPC Connection")
+		os.Exit(1)
+	}
+	log.Info().Str("ADDRESS", config.grpcAddress).Msg("Initializing gRPC connection")
+	grpcClient := well.NewWellClient(grpcConnection)
+
+	serialConfig := &serial.Config{Name: config.port, Baud: config.bitrate}
+
+	if config.port != "" && config.bitrate > 0 {
+		log.Info().Str("PORT", config.port).Int("BITRATE", config.bitrate).Msg("Establishing Serial connection")
 
 		timer := time.NewTicker(time.Duration(config.timeout) * time.Second)
 		defer timer.Stop()
@@ -125,40 +135,30 @@ func main() {
 
 		connected := make(chan bool, 1)
 
-	grpcwait:
+	serialwait:
 		for {
 			select {
 			case <-connected:
 				timer.Stop()
 				ticker.Stop()
-				break grpcwait
+				break serialwait
 			case <-timer.C:
-				log.Error().Msg("gRPC connection timeout")
+				log.Error().Msg("Serial connection timeout")
 			case <-ticker.C:
-				grpcConnection, err = grpc.Dial(config.grpcAddress, grpc.WithInsecure())
+				serialConnection, err = serial.OpenPort(serialConfig)
 				if err != nil {
-					log.Error().Err(err).Msg("Could not connect to gRPC Server... retrying")
+					log.Error().Err(err).Msg("Could not connect to Arduino Serial")
 					continue
 				}
-				defer grpcConnection.Close()
-				log.Info().Msg("Connected to gRPC Server")
+				defer serialConnection.Close()
+
+				log.Info().Msg("Connected to Arduino Serial")
+
 				connected <- true
 				continue
 			}
 		}
 	}
-
-	grpcClient := well.NewWellClient(grpcConnection)
-
-	serialConfig := &serial.Config{Name: config.port, Baud: config.bitrate}
-
-	serialConnection, err := serial.OpenPort(serialConfig)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Could not connect to Arduino Serial")
-		os.Exit(1)
-	}
-	defer serialConnection.Close()
-	log.Info().Msg("Connected to Arduino Serial")
 
 	go func() {
 		scanner := bufio.NewScanner(serialConnection)
