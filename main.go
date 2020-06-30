@@ -147,7 +147,7 @@ func main() {
 				log.Error().Err(err).Msg("Could not construct telemetry message")
 				continue
 			}
-			log.Info().Str("DATA", data).Msg("Received data from Arduino")
+			log.Debug().Str("DATA", data).Msg("Received data from Arduino")
 
 			//ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			//defer cancel()
