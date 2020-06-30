@@ -145,7 +145,7 @@ func main() {
 			case <-timer.C:
 				log.Error().Msg("gRPC connection timeout")
 			case <-ticker.C:
-				grpcConnection, err := grpc.Dial(config.grpcAddress, grpc.WithInsecure())
+				grpcConnection, err = grpc.Dial(config.grpcAddress, grpc.WithInsecure())
 				if err != nil {
 					log.Error().Err(err).Msg("Could not connect to gRPC Server... retrying")
 					continue
