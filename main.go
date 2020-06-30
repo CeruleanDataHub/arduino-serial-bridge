@@ -24,7 +24,8 @@ import (
 const (
 	defaultPort        = "/dev/ttyS4"
 	defaultBitrate     = 115200
-	defaultTimeout     = 5
+	defaultTimeout     = 60
+	defaultRetry       = 5
 	defaultGRPCAddress = "0.0.0.0:50051"
 )
 
@@ -33,6 +34,7 @@ var config struct {
 	bitrate     int
 	socket      string
 	timeout     int
+	retry       int
 	grpcAddress string
 }
 
@@ -49,6 +51,7 @@ func init() {
 	config.port = defaultPort
 	config.bitrate = defaultBitrate
 	config.timeout = defaultTimeout
+	config.retru = defaultRetry
 	config.grpcAddress = defaultGRPCAddress
 
 	if v := os.Getenv("SERIAL_PORT"); v != "" {
@@ -118,13 +121,41 @@ func main() {
 
 	log.Info().Msg("Starting Arduino Serial Bridge")
 
-	grpcConnection, err := grpc.Dial(config.grpcAddress, grpc.WithInsecure())
-	if err != nil {
-		log.Fatal().Err(err).Msg("Could not connect to gRPC server")
-		os.Exit(1)
+	var err error
+
+	if config.grpcAddress != "" {
+		log.Info().Str("ADDRESS", config.grpcAddress).Msg("Establishing gRPC connection")
+
+		timer := time.NewTicker(time.Duration(config.timeout) * time.Second)
+		defer timer.Stop()
+
+		ticker := time.NewTicker(time.Duration(config.retry) * time.Second)
+		defer ticker.Stop()
+
+		connected := make(chan bool, 1)
+
+	grpcwait:
+		for {
+			select {
+			case <-connected:
+				timer.Stop()
+				ticker.Stop()
+				break grpcwait
+			case <-timer.C:
+				log.Error().Msg("gRPC connection timeout")
+			case <-ticker.C:
+				grpcConnection, err := grpc.Dial(config.grpcAddress, grpc.WithInsecure())
+				if err != nil {
+					log.Error().Err(err).Msg("Could not connect to gRPC Server... retrying")
+					continue
+				}
+				defer grpcConnection.Close()
+				log.Info().Msg("Connected to gRPC Server")
+				connected <- true
+				continue
+			}
+		}
 	}
-	defer grpcConnection.Close()
-	log.Info().Msg("Connected to gRPC Server")
 
 	grpcClient := well.NewWellClient(grpcConnection)
 
