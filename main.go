@@ -122,6 +122,7 @@ func main() {
 	log.Info().Msg("Starting Arduino Serial Bridge")
 
 	var err error
+	var grpcConnection *grpc.ClientConn
 
 	if config.grpcAddress != "" {
 		log.Info().Str("ADDRESS", config.grpcAddress).Msg("Establishing gRPC connection")
