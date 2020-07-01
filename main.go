@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ceruleandatahub/arduino-sink-bridge/well"
+	currentLoop "github.com/ceruleandatahub/proto"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/tarm/serial"
@@ -67,7 +67,7 @@ func init() {
 }
 
 // ConstructTelemetry constructs Telemetry from unstructured string from serial connection 133|0.65|0.43
-func ConstructTelemetry(data string, str string) (*well.WellTelemetryRequest, error) {
+func ConstructTelemetry(data string, str string) (*currentLoop.CurrentLoopRequest, error) {
 	s := strings.Split(data, str)
 	if len(s) < 3 {
 		return nil, errors.New("Minimum match not found")
@@ -96,7 +96,7 @@ func ConstructTelemetry(data string, str string) (*well.WellTelemetryRequest, er
 	hash := hasher.Sum(nil)
 	checksum := base64.URLEncoding.EncodeToString(hash)
 
-	telemetry := &well.WellTelemetryRequest{
+	telemetry := &currentLoop.CurrentLoopRequest{
 		Hash:      checksum,
 		Timestamp: timetext,
 		Value:     int32(value),
@@ -120,7 +120,7 @@ func main() {
 		os.Exit(1)
 	}
 	log.Info().Str("ADDRESS", config.grpcAddress).Msg("Initializing gRPC connection")
-	grpcClient := well.NewWellClient(grpcConnection)
+	grpcClient := currentLoop.NewCurrentLoopClient(grpcConnection)
 
 	serialConfig := &serial.Config{Name: config.port, Baud: config.bitrate}
 
