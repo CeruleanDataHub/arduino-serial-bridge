@@ -171,8 +171,6 @@ func main() {
 			}
 			log.Debug().Str("DATA", data).Msg("Received data from Arduino")
 
-			//ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			//defer cancel()
 			response, err := grpcClient.SendTelemetry(context.Background(), telemetry)
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to send telemetry")
