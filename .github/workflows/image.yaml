@@ -66,6 +66,15 @@ jobs:
         run: |
           docker buildx build --output "type=image,push=true" ${{ steps.prepare.outputs.buildx_args }}
       -
+        name: Send EventGrid Message
+        if: always()
+        run: |
+          UUID=$(uuidgen)
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          DATA="{ \"name\": \"Docker push ${{ steps.push.outcome }}\", \"image_name\": \"${{ steps.prepare.outputs.docker_image }}\", \"version\": \"${{ steps.prepare.outputs.version }}\" }"
+          EVENT="{ \"specversion\": \"1.0\", \"type\": \"network.cdh.cloud-ci-${{ steps.push.outcome }}\", \"source\": \"github.com/${{ github.repository }}\", \"id\": \"${UUID}\", \"time\": \"${TIMESTAMP}\", \"datacontenttype\": \"application/json\", \"data\": ${DATA} }"
+          curl -X POST -H "aeg-sas-key: ${{ secrets.EVENTGRID_KEY }}" -H "content-type":"application/cloudevents+json; charset=utf-8" -d "$EVENT" ${{ secrets.EVENTGRID_ENDPOINT }}
+      -
         name: Docker Check Manifest
         if: always() && github.event_name != 'pull_request'
         run: |
@@ -75,12 +84,3 @@ jobs:
         if: always() && github.event_name != 'pull_request'
         run: |
           rm -f ${HOME}/.docker/config.json
-      -
-        name: Send EventGrid message
-        if: always()
-        run: |
-          UUID=$(uuidgen)
-          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          DATA="{ \"name\": \"Docker push ${{ steps.push.outcome }}\", \"image_name\": \"${DOCKER_IMAGE}\", \"version\": \"${VERSION}\" }"
-          EVENT="{ \"specversion\": \"1.0\", \"type\": \"network.cdh.cloud-ci-${{ steps.push.outcome }}\", \"source\": \"github.com/CeruleanDataHub/core-api\", \"id\": \"${UUID}\", \"time\": \"${TIMESTAMP}\", \"datacontenttype\": \"application/json\", \"data\": ${DATA} }"
-          curl -X POST -H "aeg-sas-key: ${{ secrets.EVENTGRID_KEY }}" -H "content-type":"application/cloudevents+json; charset=utf-8" -d "$EVENT" ${{ secrets.EVENTGRID_ENDPOINT }}
